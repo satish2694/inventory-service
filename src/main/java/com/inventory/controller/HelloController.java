@@ -1,4 +1,4 @@
-package com.microservice.Microservice1.controller;
+package com.inventory.controller;
 
 
 import org.springframework.http.ResponseEntity;
