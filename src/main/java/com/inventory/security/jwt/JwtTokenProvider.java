@@ -1,5 +1,6 @@
 package com.inventory.security.jwt;
 
+import com.inventory.common.util.TokenProvider;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -17,7 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Component
-public class JwtTokenProvider {
+public class JwtTokenProvider implements TokenProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtTokenProvider.class);
 
@@ -30,6 +31,7 @@ public class JwtTokenProvider {
     @Value("${app.jwt.refresh-expiration:604800000}")
     private long refreshTokenExpirationMs;
 
+    @Override
     public String generateToken(Authentication authentication) {
         logger.debug("Generating JWT token for user: {}", authentication.getName());
         
@@ -39,16 +41,19 @@ public class JwtTokenProvider {
         return createToken(claims, authentication.getName(), jwtExpirationMs);
     }
 
+    @Override
     public String generateTokenFromUsername(String username) {
         logger.debug("Generating JWT token for username: {}", username);
         return createToken(new HashMap<>(), username, jwtExpirationMs);
     }
 
+    @Override
     public String generateRefreshToken(String username) {
         logger.debug("Generating refresh token for username: {}", username);
         return createToken(new HashMap<>(), username, refreshTokenExpirationMs);
     }
 
+    @Override
     public String generateTokenWithClaims(String username, Map<String, Object> claims) {
         logger.debug("Generating JWT token with claims for username: {}", username);
         return createToken(claims, username, jwtExpirationMs);
@@ -69,6 +74,7 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    @Override
     public String getUsernameFromToken(String token) {
         try {
             Claims claims = getAllClaimsFromToken(token);
@@ -79,7 +85,7 @@ public class JwtTokenProvider {
         }
     }
 
-    public Date getExpirationDateFromToken(String token) {
+    private Date getExpirationDateFromToken(String token) {
         try {
             Claims claims = getAllClaimsFromToken(token);
             return claims.getExpiration();
@@ -98,6 +104,7 @@ public class JwtTokenProvider {
                 .getPayload();
     }
 
+    @Override
     public Boolean isTokenExpired(String token) {
         try {
             Date expiration = getExpirationDateFromToken(token);
@@ -108,6 +115,7 @@ public class JwtTokenProvider {
         }
     }
 
+    @Override
     public Boolean validateToken(String token) {
         try {
             SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
@@ -129,6 +137,7 @@ public class JwtTokenProvider {
         }
     }
 
+    @Override
     public String refreshToken(String token) {
         try {
             if (validateToken(token)) {

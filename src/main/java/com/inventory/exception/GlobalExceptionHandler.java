@@ -1,5 +1,7 @@
 package com.inventory.exception;
 
+import com.inventory.common.dto.ApiResponse;
+import com.inventory.common.exception.ApplicationException;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.ratelimiter.RequestNotPermitted;
@@ -11,68 +13,86 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 
-import java.time.LocalDateTime;
-
+/**
+ * Global exception handler following Single Responsibility Principle.
+ * Handles all exceptions and returns standardized ApiResponse.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler({CallNotPermittedException.class, BulkheadFullException.class, RequestNotPermitted.class, Exception.class})
-    public ResponseEntity<ErrorResponse> handleException(Exception ex, WebRequest request) {
-        String path = request.getDescription(false).replace("uri=", "");
-        LocalDateTime timestamp = LocalDateTime.now();
+    @ExceptionHandler(CallNotPermittedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCircuitBreakerOpen(
+            CallNotPermittedException ex, WebRequest request) {
+        String path = extractPath(request);
+        logger.error("Circuit Breaker is OPEN for request: {}", path, ex);
+        
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error(
+                        HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        "Service is temporarily unavailable. Circuit breaker is open.",
+                        path
+                ));
+    }
 
-        // Java 21 Pattern Matching for instanceof
-        ErrorResponse errorResponse;
-        HttpStatus status;
+    @ExceptionHandler(BulkheadFullException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBulkheadFull(
+            BulkheadFullException ex, WebRequest request) {
+        String path = extractPath(request);
+        logger.warn("Bulkhead is full, request rejected for: {}", path);
+        
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.error(
+                        HttpStatus.TOO_MANY_REQUESTS.value(),
+                        "Too many concurrent requests. Please try again later.",
+                        path
+                ));
+    }
 
-        if (ex instanceof CallNotPermittedException e) {
-            logger.error("Circuit Breaker is OPEN for request: {}", path, e);
-            errorResponse = ErrorResponse.builder()
-                    .timestamp(timestamp)
-                    .status(HttpStatus.SERVICE_UNAVAILABLE.value())
-                    .error("SERVICE_UNAVAILABLE")
-                    .message("Service is temporarily unavailable. Circuit breaker is open.")
-                    .details(e.getMessage())
-                    .path(path)
-                    .build();
-            status = HttpStatus.SERVICE_UNAVAILABLE;
-        } else if (ex instanceof BulkheadFullException e) {
-            logger.warn("Bulkhead is full, request rejected for: {}", path);
-            errorResponse = ErrorResponse.builder()
-                    .timestamp(timestamp)
-                    .status(HttpStatus.TOO_MANY_REQUESTS.value())
-                    .error("BULKHEAD_FULL")
-                    .message("Too many concurrent requests. Please try again later.")
-                    .details(e.getMessage())
-                    .path(path)
-                    .build();
-            status = HttpStatus.TOO_MANY_REQUESTS;
-        } else if (ex instanceof RequestNotPermitted e) {
-            logger.warn("Rate limit exceeded for request: {}", path);
-            errorResponse = ErrorResponse.builder()
-                    .timestamp(timestamp)
-                    .status(HttpStatus.TOO_MANY_REQUESTS.value())
-                    .error("RATE_LIMIT_EXCEEDED")
-                    .message("Rate limit exceeded. Please try again later.")
-                    .details(e.getMessage())
-                    .path(path)
-                    .build();
-            status = HttpStatus.TOO_MANY_REQUESTS;
-        } else {
-            logger.error("Unexpected error for request: {}", path, ex);
-            errorResponse = ErrorResponse.builder()
-                    .timestamp(timestamp)
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                    .error("INTERNAL_SERVER_ERROR")
-                    .message("An unexpected error occurred. Please contact support.")
-                    .details(ex.getMessage())
-                    .path(path)
-                    .build();
-            status = HttpStatus.INTERNAL_SERVER_ERROR;
-        }
+    @ExceptionHandler(RequestNotPermitted.class)
+    public ResponseEntity<ApiResponse<Void>> handleRateLimitExceeded(
+            RequestNotPermitted ex, WebRequest request) {
+        String path = extractPath(request);
+        logger.warn("Rate limit exceeded for request: {}", path);
+        
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.error(
+                        HttpStatus.TOO_MANY_REQUESTS.value(),
+                        "Rate limit exceeded. Please try again later.",
+                        path
+                ));
+    }
 
-        return new ResponseEntity<>(errorResponse, status);
+    @ExceptionHandler(ApplicationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApplicationException(
+            ApplicationException ex, WebRequest request) {
+        String path = extractPath(request);
+        logger.error("Application exception for request: {}", path, ex);
+        
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(ApiResponse.error(
+                        ex.getStatusCode(),
+                        ex.getMessage(),
+                        path
+                ));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenericException(
+            Exception ex, WebRequest request) {
+        String path = extractPath(request);
+        logger.error("Unexpected error for request: {}", path, ex);
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(
+                        HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                        "An unexpected error occurred. Please contact support.",
+                        path
+                ));
+    }
+
+    private String extractPath(WebRequest request) {
+        return request.getDescription(false).replace("uri=", "");
     }
 }
