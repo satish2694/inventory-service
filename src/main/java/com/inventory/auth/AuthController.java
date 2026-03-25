@@ -24,7 +24,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest loginRequest) {
-        logger.info("Login request received for user: {}", loginRequest.getUsername());
+        logger.info("Login request received for user: {}", loginRequest.username());
         
         try {
             AuthResponse response = authService.login(loginRequest);
@@ -44,6 +44,7 @@ public class AuthController {
         logger.debug("Token refresh request received");
 
         try {
+            // Java 17 Pattern Matching for null check
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body(AuthResponse.builder()
@@ -70,7 +71,9 @@ public class AuthController {
 
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            if (authentication != null) {
+            
+            // Java 17 Pattern Matching for instanceof
+            if (authentication != null && authentication.isAuthenticated()) {
                 String username = authentication.getName();
                 authService.logout(username);
                 SecurityContextHolder.clearContext();
@@ -107,6 +110,8 @@ public class AuthController {
             }
 
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            
+            // Java 17 Pattern Matching for instanceof
             if (authentication != null && authentication.isAuthenticated()) {
                 return ResponseEntity.ok(AuthResponse.builder()
                         .username(authentication.getName())

@@ -18,63 +18,61 @@ public class GlobalExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(CallNotPermittedException.class)
-    public ResponseEntity<ErrorResponse> handleCircuitBreakerOpen(
-            CallNotPermittedException ex, WebRequest request) {
-        logger.error("Circuit Breaker is OPEN for request: {}", request.getDescription(false), ex);
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
-                .status(HttpStatus.SERVICE_UNAVAILABLE.value())
-                .error("SERVICE_UNAVAILABLE")
-                .message("Service is temporarily unavailable. Circuit breaker is open.")
-                .details(ex.getMessage())
-                .path(request.getDescription(false).replace("uri=", ""))
-                .build();
-        return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
-    }
+    @ExceptionHandler({CallNotPermittedException.class, BulkheadFullException.class, RequestNotPermitted.class, Exception.class})
+    public ResponseEntity<ErrorResponse> handleException(Exception ex, WebRequest request) {
+        String path = request.getDescription(false).replace("uri=", "");
+        LocalDateTime timestamp = LocalDateTime.now();
 
-    @ExceptionHandler(BulkheadFullException.class)
-    public ResponseEntity<ErrorResponse> handleBulkheadFull(
-            BulkheadFullException ex, WebRequest request) {
-        logger.warn("Bulkhead is full, request rejected for: {}", request.getDescription(false));
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
-                .status(HttpStatus.TOO_MANY_REQUESTS.value())
-                .error("BULKHEAD_FULL")
-                .message("Too many concurrent requests. Please try again later.")
-                .details(ex.getMessage())
-                .path(request.getDescription(false).replace("uri=", ""))
-                .build();
-        return new ResponseEntity<>(errorResponse, HttpStatus.TOO_MANY_REQUESTS);
-    }
+        // Java 21 Pattern Matching for instanceof
+        ErrorResponse errorResponse;
+        HttpStatus status;
 
-    @ExceptionHandler(RequestNotPermitted.class)
-    public ResponseEntity<ErrorResponse> handleRateLimiterException(
-            RequestNotPermitted ex, WebRequest request) {
-        logger.warn("Rate limit exceeded for request: {}", request.getDescription(false));
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
-                .status(HttpStatus.TOO_MANY_REQUESTS.value())
-                .error("RATE_LIMIT_EXCEEDED")
-                .message("Rate limit exceeded. Please try again later.")
-                .details(ex.getMessage())
-                .path(request.getDescription(false).replace("uri=", ""))
-                .build();
-        return new ResponseEntity<>(errorResponse, HttpStatus.TOO_MANY_REQUESTS);
-    }
+        if (ex instanceof CallNotPermittedException e) {
+            logger.error("Circuit Breaker is OPEN for request: {}", path, e);
+            errorResponse = ErrorResponse.builder()
+                    .timestamp(timestamp)
+                    .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+                    .error("SERVICE_UNAVAILABLE")
+                    .message("Service is temporarily unavailable. Circuit breaker is open.")
+                    .details(e.getMessage())
+                    .path(path)
+                    .build();
+            status = HttpStatus.SERVICE_UNAVAILABLE;
+        } else if (ex instanceof BulkheadFullException e) {
+            logger.warn("Bulkhead is full, request rejected for: {}", path);
+            errorResponse = ErrorResponse.builder()
+                    .timestamp(timestamp)
+                    .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                    .error("BULKHEAD_FULL")
+                    .message("Too many concurrent requests. Please try again later.")
+                    .details(e.getMessage())
+                    .path(path)
+                    .build();
+            status = HttpStatus.TOO_MANY_REQUESTS;
+        } else if (ex instanceof RequestNotPermitted e) {
+            logger.warn("Rate limit exceeded for request: {}", path);
+            errorResponse = ErrorResponse.builder()
+                    .timestamp(timestamp)
+                    .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                    .error("RATE_LIMIT_EXCEEDED")
+                    .message("Rate limit exceeded. Please try again later.")
+                    .details(e.getMessage())
+                    .path(path)
+                    .build();
+            status = HttpStatus.TOO_MANY_REQUESTS;
+        } else {
+            logger.error("Unexpected error for request: {}", path, ex);
+            errorResponse = ErrorResponse.builder()
+                    .timestamp(timestamp)
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                    .error("INTERNAL_SERVER_ERROR")
+                    .message("An unexpected error occurred. Please contact support.")
+                    .details(ex.getMessage())
+                    .path(path)
+                    .build();
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(
-            Exception ex, WebRequest request) {
-        logger.error("Unexpected error for request: {}", request.getDescription(false), ex);
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .error("INTERNAL_SERVER_ERROR")
-                .message("An unexpected error occurred. Please contact support.")
-                .details(ex.getMessage())
-                .path(request.getDescription(false).replace("uri=", ""))
-                .build();
-        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        return new ResponseEntity<>(errorResponse, status);
     }
 }

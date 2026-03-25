@@ -26,32 +26,32 @@ public class AuthService {
     private long jwtExpirationMs;
 
     public AuthResponse login(LoginRequest loginRequest) {
-        logger.info("Login attempt for user: {}", loginRequest.getUsername());
+        logger.info("Login attempt for user: {}", loginRequest.username());
 
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            loginRequest.getUsername(),
-                            loginRequest.getPassword()
+                            loginRequest.username(),
+                            loginRequest.password()
                     )
             );
 
             String accessToken = tokenProvider.generateToken(authentication);
-            String refreshToken = tokenProvider.generateRefreshToken(loginRequest.getUsername());
+            String refreshToken = tokenProvider.generateRefreshToken(loginRequest.username());
 
-            logger.info("User {} logged in successfully", loginRequest.getUsername());
+            logger.info("User {} logged in successfully", loginRequest.username());
 
             return AuthResponse.builder()
                     .accessToken(accessToken)
                     .refreshToken(refreshToken)
                     .tokenType("Bearer")
                     .expiresIn(jwtExpirationMs / 1000)
-                    .username(loginRequest.getUsername())
+                    .username(loginRequest.username())
                     .message("Login successful")
                     .build();
 
         } catch (AuthenticationException ex) {
-            logger.error("Authentication failed for user {}: {}", loginRequest.getUsername(), ex.getMessage());
+            logger.error("Authentication failed for user {}: {}", loginRequest.username(), ex.getMessage());
             throw new RuntimeException("Invalid username or password", ex);
         }
     }
