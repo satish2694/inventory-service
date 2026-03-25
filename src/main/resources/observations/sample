@@ -1,0 +1,40 @@
+This error comes from Spring Cloud Config Client (Spring Boot 2.4+) when your app expects an external config server but it’s not properly configured
+.
+
+
+From Spring Boot 2.4 onward, config loading mechanism changed.
+If you include Spring Cloud Config dependency, Spring expects this property:
+spring.config.import=configserver:
+
+
+How to fix (3 options)
+✔️ Option 1: You ARE using Config Server (recommended for microservices)
+Add this in application.properties or application.yml:
+application.properties
+spring.config.import=configserver:
+spring.cloud.config.uri=http://localhost:8888
+application.yml
+spring:
+  config:
+    import: configserver:
+  cloud:
+    config:
+      uri: http://localhost:8888
+
+Option 2: Config Server is optional
+If your app should still run even if config server is down:
+spring.config.import=optional:configserver:
+👉 Best for:
+Local development
+Non-critical config server usage
+✔️ Option 3: You are NOT using Config Server
+Then simply disable it:
+spring.cloud.config.enabled=false
+OR
+spring.cloud.config.import-check.enabled=false
+
+
+Scenario	What to do
+Using Config Server	spring.config.import=configserver:
+Optional usage	optional:configserver:
+Not using it	Disable or remove dependency

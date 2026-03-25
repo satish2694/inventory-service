@@ -2,14 +2,151 @@ spring:
   application:
     name: inventory-service
   config:
-    import: configserver:http://localhost:8888
+    import: optional:configserver:http://localhost:8888
   cloud:
     config:
+      enabled: false
       uri: http://localhost:8888
       name: inventory-service
       profile: dev
       label: main
+  kafka:
+    bootstrap-servers: localhost:9092
+    admin:
+      properties:
+        bootstrap.servers: localhost:9092
+        acks: all
+        retries: 3
+        batch.size: 16384
+        linger.ms: 1
+        buffer.memory: 33554432
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: org.apache.kafka.common.serialization.StringSerializer
+        connection.timeout.ms: 0
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  security:
+    user:
+      name: admin
+      password: admin123
 
 server:
   port: 8081
+
+message:
+   display-message: "Hello from Inventory Service"
+
+app:
+  jwt:
+    secret: thisIsAVeryLongSecretKeyThatIsAtLeast64BytesLongForHS512AlgorithmSecurityComplianceRequirements1234567890
+    expiration: 86400000
+    refresh-expiration: 604800000
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 2s
+        recordExceptions:
+          - java.lang.Exception
+    instances:
+      serviceBCircuitBreaker:
+        baseConfig: default
+        waitDurationInOpenState: 15s
+        failureRateThreshold: 60
+
+  retry:
+    configs:
+      default:
+        registerHealthIndicator: false
+        maxAttempts: 3
+        waitDuration: 500
+        retryExceptions:
+          - java.lang.Exception
+        ignoreExceptions:
+          - java.lang.NullPointerException
+    instances:
+      serviceBRetry:
+        baseConfig: default
+        maxAttempts: 4
+        waitDuration: 1000
+
+  bulkhead:
+    configs:
+      default:
+        registerHealthIndicator: true
+        maxConcurrentCalls: 10
+        maxWaitDuration: 500ms
+    instances:
+      serviceBBulkhead:
+        baseConfig: default
+        maxConcurrentCalls: 5
+        maxWaitDuration: 1000ms
+
+  timelimiter:
+    configs:
+      default:
+        registerHealthIndicator: true
+        timeoutDuration: 5s
+    instances:
+      serviceBTimeLimiter:
+        baseConfig: default
+        timeoutDuration: 3s
+
+  ratelimiter:
+    configs:
+      default:
+        registerHealthIndicator: true
+        limitRefreshPeriod: 1m
+        limitForPeriod: 100
+        timeoutDuration: 5s
+    instances:
+      serviceBRateLimiter:
+        baseConfig: default
+        limitRefreshPeriod: 1m
+        limitForPeriod: 50
+        timeoutDuration: 10s
+      apiRateLimiter:
+        baseConfig: default
+        limitRefreshPeriod: 1m
+        limitForPeriod: 200
+        timeoutDuration: 5s
+      heavyOperationRateLimiter:
+        baseConfig: default
+        limitRefreshPeriod: 1m
+        limitForPeriod: 10
+        timeoutDuration: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+      base-path: /
+  endpoint:
+    env:
+      enabled: true
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    bulkheads:
+      enabled: true
+  metrics:
+    export:
+      simple:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
 
